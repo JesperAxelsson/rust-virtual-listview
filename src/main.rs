@@ -1,5 +1,4 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
+
 #![allow(non_snake_case)]
 
 extern crate winapi;
@@ -8,24 +7,14 @@ extern crate comctl32;
 extern crate kernel32;
 #[macro_use]
 extern crate lazy_static;
-extern crate widestring;
 
-use std::rc::Rc;
-use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
-use std::fs;
-use std::path::PathBuf;
+use std::sync::RwLock;
 
 use std::ffi::OsStr;
-use std::io::Error;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
-use std::ptr::null_mut;
-use std::ptr;
 use std::mem;
 use std::collections::HashMap;
-
-use widestring::{WideString, WideCString};
 
 use winapi::*;
 
@@ -56,16 +45,6 @@ fn to_wstring(str: &str) -> Vec<u16> {
     wide.push(0);
     wide
 }
-
-fn to_string(str: &Vec<u16>) -> String {
-    let vec = str.split(|c| *c == 0).next();
-    if !vec.is_none() {
-       std::char::decode_utf16(vec.unwrap().iter().cloned()).map(|r| r.unwrap()).collect()
-    } else {
-        String::new()
-    }
-}
-
 
 // ************** Constant HWNDS **************
 lazy_static! {
@@ -240,8 +219,7 @@ fn create_column(list_hwnd: HWND, text: &str, sub_item: i32) {
         };
 
         if user32::SendMessageW(list_hwnd, winapi::LVM_INSERTCOLUMNW, 0, col as LPARAM) != 0 {
-            let err = kernel32::GetLastError();
-            println!("Failed to send column message, err: {:?}", err);
+            println!("Failed to insert column");
         } 
     }
 }
