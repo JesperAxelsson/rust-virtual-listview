@@ -74,9 +74,7 @@ lazy_static! {
 }
 
 static mut LIST_HWND: HWND = 0 as HWND;
-static mut EDIT_HWND: HWND = 0 as HWND;
 
-const IDC_MAIN_EDIT: HMENU = 100 as HMENU;
 const IDC_MAIN_LISTVIEW: HMENU = 101 as HMENU;
 
 const MAX_TEXT_LEN: u64 = 250;
@@ -95,7 +93,6 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                 println!("Failed to init component");
             }
             
-            create_entry(hwnd);
             test_setup_list(hwnd);
 
             println!("Running WM_CREATE");
@@ -105,13 +102,8 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
         WM_NOTIFY => {
          
             match (*(l_param as LPNMHDR) as NMHDR).code {
-                LVN_GETDISPINFOA => {
-                    println!("Why the A!?");
-                    0
-                },
                 LVN_GETDISPINFOW => {
-
-            
+           
                     let ix: usize = (*(l_param as *const NMLVDISPINFOW)).item.iItem as usize;
                     let mask = (*(l_param as *const NMLVDISPINFOW)).item.mask;
 
@@ -164,18 +156,18 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
 
 
                         // Debug code
-                        let ref vec = STRING_CACHE.read().unwrap()[&item.item];
+                        // let ref vec = STRING_CACHE.read().unwrap()[&item.item];
 
                         println!("New string len: {:?} vec: {:?} l_param: {:?}",
                             kernel32::lstrlenW((*(l_param as *const NMLVDISPINFOW)).item.pszText),
-                            vec.as_ptr() as LPWSTR,
+                            ptr,
                             l_param);
 
                         return 0;                
                                         
                     }
 
-                    user32::DefWindowProcW(hwnd, msg, w_param, l_param)
+                    0
                     
                 },
                 LVN_ODCACHEHINT=> {
@@ -192,24 +184,6 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                 }
             }
 
-        },
-        WM_COMMAND => {
-            if LOWORD(w_param as u32) as HMENU == IDC_MAIN_EDIT {
-                let mut txt = to_wstring("");
-                for _ in 0..256 {
-                    txt.push(0);
-                }
-
-                user32::SendMessageW(EDIT_HWND, 
-                    winapi::WM_GETTEXT, 
-                    txt.len() as u64,
-                    txt.as_ptr() as LPARAM);
-
-                println!("Got Edit Changed txt: {:?}", to_string(&txt));
-                return 0;
-            }
-
-            user32::DefWindowProcW(hwnd, msg, w_param, l_param)  
         },
         WM_SIZE => {
             // user32::DefWindowProcW(hwnd, msg, w_param, l_param)
@@ -259,30 +233,18 @@ fn test_setup_list(hwnd: HWND) {
 
     ALL_DATA.write().unwrap().append(&mut get_all_data());
    
+
+    // Create the cache
     let mut list_write = STRING_CACHE.write().unwrap();
 
     for e in ALL_DATA.read().unwrap().iter() {
         list_write.insert(e.item.to_string(), to_wstring(&e.item));
         list_write.insert(e.sub_item.to_string(), to_wstring(&e.sub_item));
     }  
-     
-    for (i, e) in ALL_DATA.read().unwrap().iter().enumerate() {
-        let i = i as i32;
-        
-        insert_item(list_hwnd, &e.item, i);
-        insert_sub_item(list_hwnd, &e.sub_item, i, 1);
-    }        
 
-
-    // unsafe {
-    //     user32::SendMessageW(list_hwnd, winapi::LVM_SETITEMCOUNT, (ALL_DATA.read().unwrap().len()-1) as u64, 0);
-
-    //     user32::SendMessageW(LIST_HWND, 
-    //         winapi::LVM_REDRAWITEMS, 
-    //         0,
-    //         10);
-    //     user32::UpdateWindow(LIST_HWND);
-    // }
+    unsafe {
+        user32::SendMessageW(list_hwnd, winapi::LVM_SETITEMCOUNT, (ALL_DATA.read().unwrap().len()-1) as u64, 0);
+    }
 }
 
 
@@ -308,125 +270,6 @@ fn create_column(list_hwnd: HWND, text: &str, sub_item: i32) {
             let err = kernel32::GetLastError();
             println!("Failed to send column message, err: {:?}", err);
         } 
-    }
-}
-
-
-fn insert_item(list_hwnd: HWND, text: &str, ix: i32) {
-    unsafe {
-        // let text_row = to_wstring(text);
-        let _ = to_wstring(text);
-
-        let item: winapi::LPLVITEMW = &mut winapi::LV_ITEMW {
-            mask: winapi::LVIF_TEXT | LVIF_PARAM, // | winapi::LVIF_STATE,
-            pszText: LPSTR_TEXTCALLBACKW, //text_row.as_ptr() as LPWSTR, // winapi::LPSTR_TEXTCALLBACKW, // handle_wm_notify as *mut _, //text_row.as_ptr() as *mut _,
-            // pszText: text_row.as_ptr() as LPWSTR, // winapi::LPSTR_TEXTCALLBACKW, // handle_wm_notify as *mut _, //text_row.as_ptr() as *mut _,
-            iItem: ix,
-            iSubItem: 0,
-            cchTextMax: 0,
-            // cchTextMax: MAX_TEXT_LEN as i32,
-
-            state: 0,
-            stateMask: 0,
-
-            
-            iImage: 0,
-            lParam: ix as i64,
-
-            iIndent: 0,
-
-            cColumns: 0,
-            puColumns: std::ptr::null_mut(),
-            piColFmt: std::ptr::null_mut(),
-            iGroup: 0,
-            iGroupId: 0,
-        };
-
-
-        if ix == 0 {
-            println!("Address for 0: {:?}", item);
-        }
-
-        // println!("Insert column: {:?}", winapi::LVM_INSERTCOLUMNW);
-        let resp = user32::SendMessageW(list_hwnd, winapi::LVM_INSERTITEMW, 0, item as LPARAM);
-
-        if resp != (ix as i64) {   
-            // let err = kernel32::GetLastError();
-            println!("Item index does not match!, item: {:?}, return: {:?}", ix, resp);
-        }
-    }
-}
-
-fn insert_sub_item(list_hwnd: HWND, text: &str, ix: i32, sub_item: i32) {
-    unsafe {
-        // let text_row = to_wstring(text);
-        let _ = to_wstring(text);
-
-        let item: winapi::LPLVITEMW = &mut winapi::LV_ITEMW {
-            mask: winapi::LVIF_TEXT, // | winapi::LVIF_STATE,
-            pszText:  LPSTR_TEXTCALLBACKW,
-            // pszText: text_row.as_ptr() as LPWSTR,            
-            iItem: ix,
-            iSubItem: sub_item,
-            cchTextMax: 0,
-            // cchTextMax: MAX_TEXT_LEN as i32,
-
-            state: 0,
-            stateMask: 0,
-
-            iImage: 0,
-            lParam: 0,
-
-            iIndent: 0,
-
-            cColumns: 0,
-            puColumns: std::ptr::null_mut(),
-            piColFmt: std::ptr::null_mut(),
-            iGroup: 0,
-            iGroupId: 0,
-        };
-
-        // println!("Insert column: {:?}", winapi::LVM_INSERTCOLUMNW);
-        let resp = user32::SendMessageW(list_hwnd, winapi::LVM_SETITEMW, 0, item as LPARAM);
-        if resp != (ix as i64) {
-            // let err = kernel32::GetLastError();
-            // println!("Sub index does not match!, item: {:?}, return: {:?}", ix, resp);
-        }
-    }
-}
-
-
-fn create_entry(hwnd_parent: HWND) -> HWND {
-       // This should only run once!
-    unsafe {
-
-        let wc = to_wstring("EDIT");
-
-        let style_ex = 0; 
-        let style = WS_CHILD | WS_VISIBLE | WS_BORDER;
-
-        let h_instance = kernel32::GetModuleHandleW(std::ptr::null_mut());
-
-        let hwnd = user32::CreateWindowExW(
-            style_ex, 
-            wc.as_ptr() as *mut _,
-            to_wstring("").as_ptr() as *mut _, 
-            style, 
-            5, 5, 
-            250, 
-            20, 
-            hwnd_parent, 
-            IDC_MAIN_EDIT, 
-            h_instance,
-            std::ptr::null_mut());
-
-        // println!("{:?} x {:?}", rc_client.right - rc_client.left, rc_client.bottom - rc_client.top);        
-
-        println!("Edit hwnd: {:?}", hwnd);
-        
-        EDIT_HWND = hwnd;
-
-        hwnd
     }
 }
 
@@ -464,7 +307,6 @@ fn create_window(title: &str) -> HWND {
         // We register our class - 
         if user32::RegisterClassW(&wnd) == 0 {
             println!("Failed to register wnd");
-            show_message_box("Failed to register wnd");
         }
 
         let h_wnd_desktop = user32::GetDesktopWindow();
@@ -488,15 +330,6 @@ fn create_window(title: &str) -> HWND {
 }
 
 
-fn show_message_box(msg: &str) {
-    let wmsg = to_wstring(msg);
-    unsafe {
-        user32::MessageBoxW(null_mut(), wmsg.as_ptr(), wmsg.as_ptr(), winapi::MB_OK);
-    }
-
-}
-
-
 fn create_list_view(hwnd_parent: HWND) -> HWND {
     // This should only run once!
     unsafe {
@@ -512,25 +345,20 @@ fn create_list_view(hwnd_parent: HWND) -> HWND {
         let h_instance = kernel32::GetModuleHandleW(std::ptr::null_mut());
 
         let style_ex = 0; //winapi::LVS_EX_AUTOSIZECOLUMNS;
-        // let style = WS_CHILD | LVS_REPORT | LVS_EDITLABELS;
-        // let style = WS_CHILD | winapi::WS_CLIPCHILDREN | WS_VISIBLE | winapi::LVS_SINGLESEL | LVS_REPORT | winapi::LVS_OWNERDATA | WS_BORDER;
-        // let style = WS_CHILD | WS_VISIBLE  | LVS_REPORT | WS_BORDER | winapi::LVS_OWNERDATA ;
-        // let style = LVS_REPORT | WS_VISIBLE;
 
         let style =  WS_VISIBLE | WS_CHILD | WS_TABSTOP |
                   LVS_NOSORTHEADER | LVS_OWNERDATA | LVS_AUTOARRANGE |
                   LVS_SINGLESEL | LVS_REPORT;
         let hwnd = user32::CreateWindowExW(
-            style_ex, 
+            0, 
             wc.as_ptr() as *mut _,
             to_wstring("").as_ptr() as *mut _, 
             style, 
-            0, 0, 
-            rc_client.right - rc_client.left, 
-            rc_client.bottom - rc_client.top, 
+            0, 0, 0, 0,
+            // rc_client.right - rc_client.left, 
+            // rc_client.bottom - rc_client.top, 
             hwnd_parent, 
-            0 as HMENU, 
-            //IDC_MAIN_LISTVIEW, 
+            IDC_MAIN_LISTVIEW , 
             h_instance, 
             std::ptr::null_mut());
 
