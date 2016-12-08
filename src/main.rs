@@ -2,9 +2,6 @@
 #![allow(unused_imports)]
 #![allow(non_snake_case)]
 
-extern crate scan_dir;
-extern crate time;
-extern crate regex;
 extern crate winapi;
 extern crate user32;
 extern crate comctl32;
@@ -18,9 +15,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::fs;
 use std::path::PathBuf;
-
-use time::PreciseTime;
-use scan_dir::ScanDir;
 
 use std::ffi::OsStr;
 use std::io::Error;
@@ -53,150 +47,21 @@ use winapi::*;
 
 // use comctl32::WC_LISTVIEW;
 
-
-mod lens;
-mod runner;
-mod config;
-
-use config::Config;
-
-
-fn list_files_in_dir(path: &str) -> Vec<lens::DirEntry> {
-    // println!("Starting glob: {:?}", path);
-
-    let mut vec: Vec<lens::DirEntry> = Vec::new();
-    
-    let path = PathBuf::from(path);
-
-    if !path.exists() {
-        println!("Sorry path: {:?} does not exits", path);
-        return vec;
-    }
-
-
-    ScanDir::all().skip_hidden(true).read(path, |iter| {
-        for (path, _) in iter {
-            let path = path.path();
-            let meta = path.metadata().expect("Failed to read metadata");
-
-            // *** Handle file ***
-            if meta.is_file() {
-                let ff = vec![lens::FileEntry {
-                    name: String::from(path.file_name().unwrap().to_str().unwrap()),
-                    path: String::from(path.to_str().unwrap()),
-                    size: meta.len()
-                }];
-
-                let e = lens::DirEntry {
-                    name: String::from(path.file_name().unwrap().to_str().unwrap()),
-                    path: String::from(path.to_str().unwrap()),
-                    files: ff
-                };
-
-                vec.push(e);
-            }
-
-            // *** Handle dir ***
-            if meta.is_dir() {
-
-                let mut files = Vec::new();
-                
-                // println!("***");
-
-                ScanDir::files().walk(&path, |iter| {
-                    for (entry, name) in iter {
-                        // println!("File {:?} has full path {:?}", name, entry.path());
-                        let dir = entry.path();
-
-                        // println!("File: {:?}", &dir);
-
-                        let dir_path = dir.to_str().expect("Failed to read path");
-
-                        let size;
-
-                        if dir.to_str().unwrap().len() >= 260 {
-                            let strr = "\\??\\".to_owned() + dir.to_str().unwrap();
-                            size = fs::metadata(&strr).expect("failed to read metadata").len();
-                            // println!("Long path");
-                        } else {
-                            size = fs::metadata(&dir).expect("failed to read metadata").len();
-                        }   
-    
-                        files.push(lens::FileEntry {
-                            name: String::from(name),
-                            path: String::from(dir_path),
-                            size: size
-                        });
-                    }
-                }).unwrap();
-
-                let e = lens::DirEntry {
-                    name: String::from(path.file_name().unwrap().to_str().unwrap()),
-                    path: String::from(path.to_str().unwrap()),
-                    files: files,
-                };
-
-                // if e.files.len() == 0 {
-                //     println!("Dir: {:?} Count: {:?} Path: {:?} ", e.name, e.files.len(), path.to_str().unwrap());
-                // }
-                // println!(" ");
-                vec.push(e);
-            }
-
-            // println!("Dir: {:?} Path: {:?}", meta.is_dir(), path);
-        }
-    }).expect("Scan dir failed!");
-
-    // println!("glob Done");
-    vec
+struct Row {
+    item: String, 
+    sub_item: String,
 }
 
-
-fn get_all_data() -> Vec<lens::DirEntry> {
-
-    // let paths = Config.read_config();
-
-    // for c in paths.iter() {
-    //     println!("Conf: {:?}", &c);
-    // }
+fn get_all_data() -> Vec<Row> {
 
     let mut vec = Vec::with_capacity(10_000);
 
-    let start = PreciseTime::now();
-  
-    // let mut children = Vec::new();
-
-    // for p in paths {
-    //     children.push(thread::spawn(move || {
-    //         let start = PreciseTime::now();
-
-    //         let vec = list_files_in_dir(&p);
-            
-    //         let end = PreciseTime::now();
-
-    //         println!("Path {:?} entries took: {:?} ms", &p, start.to(end).num_milliseconds());
-    //         vec
-    //     }))
-    // }
-
-    // for c in children {
-    //     vec.append(&mut c.join().expect("Failed to join thread!"));
-    // }
-
     for i in 0..10_000 {
-        vec.push(lens::DirEntry {
-            name: format!("Name: {:?}", i),
-            path: format!("Path {:?}", i),
-            files: Vec::new()
-
+        vec.push(Row {
+            item: format!("Item: {:?}", i),
+            sub_item: format!("SubItem {:?}", i),
         });
     }
-
-    vec.sort();
-
-    let end = PreciseTime::now();
-
-    println!("Got {:?} entries took: {:?} ms", vec.len(), start.to(end).num_milliseconds());
 
     vec
 }
@@ -220,7 +85,7 @@ fn to_string(str: &Vec<u16>) -> String {
 
 // ************** Constant HWNDS **************
 lazy_static! {
-    static ref ALL_DATA: RwLock<Vec<lens::DirEntry>> = RwLock::new(Vec::new());
+    static ref ALL_DATA: RwLock<Vec<Row>> = RwLock::new(Vec::new());
     static ref LIST_CACHE: RwLock<Vec<u64>> = RwLock::new(Vec::new());
     // static ref LIST_FOO_CACHE: RwLock<Vec<LV_ITEMW>> = RwLock::new(Vec::new());
     static ref STRING_CACHE: RwLock<HashMap<String, Vec<u16>>> = RwLock::new(HashMap::new());
@@ -319,16 +184,15 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                         };
 
                         let (ptr, _) = match (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.iSubItem {
-                            0 => f(&item.name),
-                            1 => f(&item.path),
-                            2 => (to_wstring("100mb").as_ptr(), 5), //String::from(lens::pretty_size(item.size()),
+                            0 => f(&item.item),
+                            1 => f(&item.sub_item),
                             n => {
                                 println!("Found subitem: {:?}", n);
                                 return 0;
                             }
                         };
 
-                        let ref vec = STRING_CACHE.read().unwrap()[&item.name];
+                        let ref vec = STRING_CACHE.read().unwrap()[&item.item];
 
                         if vec.as_ptr() == ptr {
 
@@ -486,44 +350,36 @@ fn test_setup_list(hwnd: HWND) {
         LIST_HWND = list_hwnd;
     }
 
-    create_column(list_hwnd, "Size", 2);
-    create_column(list_hwnd, "Path", 1);
-    create_column(list_hwnd, "Name", 0);
+    create_column(list_hwnd, "SubItem", 1);
+    create_column(list_hwnd, "Item", 0);
 
 
     ALL_DATA.write().unwrap().append(&mut get_all_data());
    
-
-
     let mut list_write = STRING_CACHE.write().unwrap();
 
     for e in ALL_DATA.read().unwrap().iter() {
-        list_write.insert(e.name.to_string(), to_wstring(&e.name));
-        list_write.insert(e.path.to_string(), to_wstring(&e.path));
-        let size = lens::pretty_size(e.size());
-        list_write.insert(size.to_string(), to_wstring(&size));
+        list_write.insert(e.item.to_string(), to_wstring(&e.item));
+        list_write.insert(e.sub_item.to_string(), to_wstring(&e.sub_item));
     }  
      
-    // for (i, e) in ALL_DATA.read().unwrap().iter().enumerate() {
-    //     let i = i as i32;
+    for (i, e) in ALL_DATA.read().unwrap().iter().enumerate() {
+        let i = i as i32;
         
-    //     insert_item(list_hwnd, &e.name, i);
-    //     insert_sub_item(list_hwnd, &e.path, i, 1);
-    //     insert_sub_item(list_hwnd, &lens::pretty_size(e.size()), i, 2);
+        insert_item(list_hwnd, &e.item, i);
+        insert_sub_item(list_hwnd, &e.sub_item, i, 1);
+    }        
 
 
-    // }        // user32::MoveWindow(list_hwnd);
+    // unsafe {
+    //     user32::SendMessageW(list_hwnd, winapi::LVM_SETITEMCOUNT, (ALL_DATA.read().unwrap().len()-1) as u64, 0);
 
-
-    unsafe {
-        user32::SendMessageW(list_hwnd, winapi::LVM_SETITEMCOUNT, (ALL_DATA.read().unwrap().len()-1) as u64, 0);
-
-        user32::SendMessageW(LIST_HWND, 
-            winapi::LVM_REDRAWITEMS, 
-            0,
-            10);
-        user32::UpdateWindow(LIST_HWND);
-    }
+    //     user32::SendMessageW(LIST_HWND, 
+    //         winapi::LVM_REDRAWITEMS, 
+    //         0,
+    //         10);
+    //     user32::UpdateWindow(LIST_HWND);
+    // }
 }
 
 
@@ -582,28 +438,6 @@ fn insert_item(list_hwnd: HWND, text: &str, ix: i32) {
             iGroupId: 0,
         };
 
-        // let ref mut item2: LV_ITEMW = &mut winapi::LV_ITEMW {
-        //     mask: winapi::LVIF_TEXT, // | winapi::LVIF_STATE,
-        //     pszText: LPSTR_TEXTCALLBACKW, //text_row.as_ptr() as LPWSTR, // winapi::LPSTR_TEXTCALLBACKW, // handle_wm_notify as *mut _, //text_row.as_ptr() as *mut _,
-        //     iItem: ix,
-        //     iSubItem: sub_item,
-        //     cchTextMax: MAX_TEXT_LEN as i32,
-
-        //     state: 0,
-        //     stateMask: 0,
-
-            
-        //     iImage: 0,
-        //     lParam: 0,
-
-        //     iIndent: 0,
-
-        //     cColumns: 0,
-        //     puColumns: std::ptr::null_mut(),
-        //     piColFmt: std::ptr::null_mut(),
-        //     iGroup: 0,
-        //     iGroupId: 0,
-        // };
         mem::forget(item);
         LIST_CACHE.write().unwrap().push(item as u64);
 
