@@ -25,27 +25,11 @@ use std::ptr;
 use std::mem;
 use std::collections::HashMap;
 
-use widestring::{WideString, WideCString};
+// use widestring::{WideString, WideCString};
 
-// use winapi::{HWND, WNDCLASSW, HBRUSH, HMENU, RECT,
-//     WS_VISIBLE, WS_OVERLAPPEDWINDOW, 
-//     WM_CREATE, WM_QUIT, WM_DESTROY, WM_CLOSE, WM_NOTIFY, WM_SIZE, WM_COMMAND,
-//     LPCWSTR, LPWSTR,
-//     INITCOMMONCONTROLSEX, ICC_LISTVIEW_CLASSES,
-//     WS_CHILD, WS_BORDER,
-//     LVS_REPORT, LVS_EDITLABELS,
-//     LVCF_WIDTH, LVCF_IDEALWIDTH, LVCF_TEXT, LVCF_ORDER, LVCF_SUBITEM,
-//     NMHDR, LPNMHDR };
 use winapi::*;
 
-// use winapi::commctrl::{ LVN_GETDISPINFOW, NMLVDISPINFOW, LPNMLVDISPINFOW,
-//     LVN_ODCACHEHINT, NMLVCACHEHINT, LPNMLVCACHEHINT,
-//     LVN_ODFINDITEMW, NMLVFINDITEMW, LPNMLVFINDITEMW
-//       };
 
-// use winapi::minwindef::*;
-
-// use comctl32::WC_LISTVIEW;
 
 struct Row {
     item: String, 
@@ -86,8 +70,6 @@ fn to_string(str: &Vec<u16>) -> String {
 // ************** Constant HWNDS **************
 lazy_static! {
     static ref ALL_DATA: RwLock<Vec<Row>> = RwLock::new(Vec::new());
-    static ref LIST_CACHE: RwLock<Vec<u64>> = RwLock::new(Vec::new());
-    // static ref LIST_FOO_CACHE: RwLock<Vec<LV_ITEMW>> = RwLock::new(Vec::new());
     static ref STRING_CACHE: RwLock<HashMap<String, Vec<u16>>> = RwLock::new(HashMap::new());
 }
 
@@ -118,33 +100,25 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
 
             println!("Running WM_CREATE");
             0
-        }
-        WM_NOTIFY => {
-            // if mem::transmute_copy(src)
-            // println!("l_param: {:?}", l_param);
-            // let mut is_safe = false;
-            // let mut ptr: LPNMLVDISPINFOW = 0 as LPNMLVDISPINFOW;
+        },
 
-            // let pnmhdr: LPNMHDR = l_param as LPNMHDR;
+        WM_NOTIFY => {
+         
             match (*(l_param as LPNMHDR) as NMHDR).code {
                 LVN_GETDISPINFOA => {
                     println!("Why the A!?");
                     0
                 },
                 LVN_GETDISPINFOW => {
-                    // let mut plvdi: NMLVDISPINFOW = *(l_param as LPNMLVDISPINFOW);
-                    // let plvdi: LPNMLVDISPINFOW = (l_param as LPNMLVDISPINFOW);
-            
-                    let ix: usize = (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.iItem as usize;
-                    let mask = (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.mask;
 
-                    if (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.iItem < 0 {
-                        println!("Request Item with negative index:{:?}", (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.iItem);
+            
+                    let ix: usize = (*(l_param as *const NMLVDISPINFOW)).item.iItem as usize;
+                    let mask = (*(l_param as *const NMLVDISPINFOW)).item.mask;
+
+                    if (*(l_param as *const NMLVDISPINFOW)).item.iItem < 0 {
+                        println!("Request Item with negative index:{:?}", (*(l_param as *const NMLVDISPINFOW)).item.iItem);
                         return 0;
                     }
-
-                    // Retrieve information for item at index iItem.
-                    //RetrieveItem( &rndItem, plvdi->item.iItem );
                    
                     if (mask & LVIF_STATE) == 0 { 
                         // println!("They want state!");
@@ -165,25 +139,13 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                         }
                         let ref item = ALL_DATA.read().unwrap()[ix];
 
-                        // println!("Ix wanted: {:?} lparam: {:?} ", ix, (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.lParam);
-                        // println!("wparam: {:?} lparam: {:?} ", w_param, l_param);
-
-                        // let text = match (*plvdi as NMLVDISPINFOW).item.iSubItem {
-                        //     0 => &item.name,
-                        //     1 => &item.path,
-                        //     2 => "100mb", //String::from(lens::pretty_size(item.size()),
-                        //     n => {
-                        //         println!("Found subitem: {:?}", n);
-                        //         return 0;
-                        //     }
-                        // };
                         let f = |key| {
                             let ref vec = STRING_CACHE.read().unwrap()[(key)];
                             let ptr = STRING_CACHE.read().unwrap()[(key)].as_ptr();
                             (ptr, vec.len())
                         };
 
-                        let (ptr, _) = match (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.iSubItem {
+                        let (ptr, _) = match (*(l_param as *const NMLVDISPINFOW)).item.iSubItem {
                             0 => f(&item.item),
                             1 => f(&item.sub_item),
                             n => {
@@ -192,100 +154,41 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                             }
                         };
 
-                        let ref vec = STRING_CACHE.read().unwrap()[&item.item];
-
-                        if vec.as_ptr() == ptr {
-
-                            // println!("Got right pointer");
-                        }
-                        // println!("Set sub: {:?} to: {:?}", text, plvdi.item.iSubItem);
-
-                        // let text = to_wstring(text);
-                        // let v = (*plvdi as NMLVDISPINFOW).item.pszText as &mut Vec<u16>;
-
-                        // let raw_ptr = (*plvdi as NMLVDISPINFOW).item.pszText;
-                        // mem::forget(plvdi);
-                        // mem::forget((*plvdi as NMLVDISPINFOW).item);
-
-                        // println!("Old string len: {:?} first: {:?}", kernel32::lstrlenW((*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.pszText), vec[0]);
-
-                        // let ss = std::ffi::CString::new("hello dude").unwrap();
+                        
                         if (*(l_param as *const NMLVDISPINFOW)).item.cchTextMax > 0 {
                             println!("cchTextMax is {:?}", (*(l_param as *const NMLVDISPINFOW)).item.cchTextMax  );
                         }
 
-                        let mut tem = &mut (*(l_param as *mut NMLVDISPINFOW)).item;
-                        tem.pszText = vec.as_ptr() as LPWSTR;
-                        // kernel32::lstrcpyW((*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.pszText, vec.as_ptr() as LPWSTR);
-                        // *&mut (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.pszText = vec.as_ptr() as LPWSTR;
-                        // (*(l_param as *mut NMLVDISPINFOW)).item.pszText = vec.as_ptr() as LPWSTR;
-                        (*(l_param as *mut NMLVDISPINFOW)).item.cchTextMax = vec.len() as i32;
-                        mem::forget(*(l_param as *mut NMLVDISPINFOW));
-                        mem::forget((*(l_param as *mut NMLVDISPINFOW)).item);
-                        // (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.lpszText = vec.as_ptr() as LPWSTR;
+                        // Try to set text in dispinfo
+                         (*(l_param as *mut NMLVDISPINFOW)).item.pszText = ptr as LPWSTR; 
 
 
+                        // Debug code
+                        let ref vec = STRING_CACHE.read().unwrap()[&item.item];
 
                         println!("New string len: {:?} vec: {:?} l_param: {:?}",
                             kernel32::lstrlenW((*(l_param as *const NMLVDISPINFOW)).item.pszText),
                             vec.as_ptr() as LPWSTR,
                             l_param);
 
-                        // (*plvdi as NMLVDISPINFOW).item.pszText = ss.as_ptr() as LPWSTR;
-                        // mem::forget(ss);
-
-                        // (*plvdi as NMLVDISPINFOW).item.cchTextMax = len as i32;
-                        // mem::forget(plvdi);
-
-                        // println!("String len {:?}",  (*plvdi as NMLVDISPINFOW).item.cchTextMax);
-
                         return 0;                
-
-
-                        // STRING_CACHE.write().unwrap().push(text);
-                        // let t = WideCString::from_ptr_str((*plvdi as NMLVDISPINFOW).item.pszText);
-                        // println!("String Before: sub: {:?} text: {:?}", (*plvdi as NMLVDISPINFOW).item.iSubItem, t.to_string());
-            
-                        // if ix == 0 {
-                        //     // let elem: LPLVITEMW = LIST_CACHE.read().unwrap()[0 as usize] as LPLVITEMW;
-                        //     // let t = WideCString::from_ptr_str(elem.pszText);
-                        //     // println!("String Before: sub: {:?} text: {:?}", elem.iSubItem, t.to_string());
-                 
-                        //     // println!("Got item: {:?}", elem.iItem);
-                        //     // println!("Got item: {:?}", elem);
-                        //     println!("Dude!: {:?} sub: {:?}",
-                        //         (&mut (*plvdi as NMLVDISPINFOW).item) as LPLVITEMW, 
-                        //         (*plvdi as NMLVDISPINFOW).item.iSubItem);
-                        //     // let addr = (&mut (*plvdi as NMLVDISPINFOW).item) as *mut LV_ITEMW;
-                            
-                        //     // std::ptr::write(addr, *elem);
-                        //     // println!("New address: {:?}", (&mut (*plvdi as NMLVDISPINFOW).item) as LPLVITEMW);
-                        // }
                                         
                     }
-
 
                     user32::DefWindowProcW(hwnd, msg, w_param, l_param)
                     
                 },
                 LVN_ODCACHEHINT=> {
-                    // let cache_hint = l_param as LPNMLVCACHEHINT;
-
-                    // let from = (*cache_hint as NMLVCACHEHINT).iFrom;
-                    // let to = (*cache_hint as NMLVCACHEHINT).iTo;
-                    // println!("Got cache hint from {:?} to: {:?}", from, to);
-
-
-                    0
+                    user32::DefWindowProcW(hwnd, msg, w_param, l_param)
                 },
                 LVN_ODFINDITEMW => {
                     // let pnfi = l_param as LPNMLVFINDITEMW;
                     println!("Got find item event!");
-                    0
+                    user32::DefWindowProcW(hwnd, msg, w_param, l_param)
 
                 },
                 _ => {
-                    user32::DefWindowProcW(hwnd, msg, w_param, l_param)        
+                    user32::DefWindowProcW(hwnd, msg, w_param, l_param)
                 }
             }
 
@@ -307,7 +210,7 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
             }
 
             user32::DefWindowProcW(hwnd, msg, w_param, l_param)  
-        }
+        },
         WM_SIZE => {
             // user32::DefWindowProcW(hwnd, msg, w_param, l_param)
             on_size(hwnd, LOWORD(l_param as u32) as i32, HIWORD(l_param as u32) as i32, w_param as u32);
@@ -411,7 +314,8 @@ fn create_column(list_hwnd: HWND, text: &str, sub_item: i32) {
 
 fn insert_item(list_hwnd: HWND, text: &str, ix: i32) {
     unsafe {
-        let text_row = to_wstring(text);
+        // let text_row = to_wstring(text);
+        let _ = to_wstring(text);
 
         let item: winapi::LPLVITEMW = &mut winapi::LV_ITEMW {
             mask: winapi::LVIF_TEXT | LVIF_PARAM, // | winapi::LVIF_STATE,
@@ -438,8 +342,6 @@ fn insert_item(list_hwnd: HWND, text: &str, ix: i32) {
             iGroupId: 0,
         };
 
-        mem::forget(item);
-        LIST_CACHE.write().unwrap().push(item as u64);
 
         if ix == 0 {
             println!("Address for 0: {:?}", item);
@@ -452,16 +354,13 @@ fn insert_item(list_hwnd: HWND, text: &str, ix: i32) {
             // let err = kernel32::GetLastError();
             println!("Item index does not match!, item: {:?}, return: {:?}", ix, resp);
         }
-
-        // user32::SendMessageW(list_hwnd, winapi::LVM_INSERTITEMW, 0, item as LPARAM);
-
-
     }
 }
 
 fn insert_sub_item(list_hwnd: HWND, text: &str, ix: i32, sub_item: i32) {
     unsafe {
-        let text_row = to_wstring(text);
+        // let text_row = to_wstring(text);
+        let _ = to_wstring(text);
 
         let item: winapi::LPLVITEMW = &mut winapi::LV_ITEMW {
             mask: winapi::LVIF_TEXT, // | winapi::LVIF_STATE,
@@ -487,9 +386,6 @@ fn insert_sub_item(list_hwnd: HWND, text: &str, ix: i32, sub_item: i32) {
             iGroupId: 0,
         };
 
-        mem::forget(item);
-        LIST_CACHE.write().unwrap().push(item as u64);
-
         // println!("Insert column: {:?}", winapi::LVM_INSERTCOLUMNW);
         let resp = user32::SendMessageW(list_hwnd, winapi::LVM_SETITEMW, 0, item as LPARAM);
         if resp != (ix as i64) {
@@ -503,14 +399,7 @@ fn insert_sub_item(list_hwnd: HWND, text: &str, ix: i32, sub_item: i32) {
 fn create_entry(hwnd_parent: HWND) -> HWND {
        // This should only run once!
     unsafe {
-   
 
-        // Setup actual listview
-        // let mut rc_client: RECT = RECT {
-        //     right: 0, left: 0, top: 0, bottom: 0
-        // };
-        // user32::GetClientRect(hwnd_parent, &mut rc_client);
-        
         let wc = to_wstring("EDIT");
 
         let style_ex = 0; 
@@ -572,10 +461,6 @@ fn create_window(title: &str) -> HWND {
     let hwnd;
 
     unsafe {
-        // TODO: Check this later
-        // let h_instance = GetModuleHandleA(0 as LPCSTR);
-        // let hInstance = user32::GetModuleHandleExW(null());
-
         // We register our class - 
         if user32::RegisterClassW(&wnd) == 0 {
             println!("Failed to register wnd");
@@ -664,22 +549,8 @@ fn create_list_view(hwnd_parent: HWND) -> HWND {
 
 
 fn main() {
-    // runner::create_bat_file();
-
-
-    // let msg = "Hello World";
-    // let wide: Vec<u16> = OsStr::new(msg).encode_wide().chain(once(0)).collect();
-    // let ret = unsafe {
-    //     user32::MessageBoxW(null_mut(), wide.as_ptr(), wide.as_ptr(), winapi::MB_OK)
-    // };
-
-    // if ret == 0 {
-    //     println!("Failed: {:?}", Error::last_os_error());
-    // }
     let title = "my_window";
     let hwnd = create_window(title);
-
-    // test_setup_list(hwnd);
 
     unsafe {
         user32::ShowWindow(hwnd, winapi::SW_NORMAL);
