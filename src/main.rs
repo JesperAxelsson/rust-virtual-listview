@@ -25,7 +25,7 @@ use std::ptr;
 use std::mem;
 use std::collections::HashMap;
 
-// use widestring::{WideString, WideCString};
+use widestring::{WideString, WideCString};
 
 use winapi::*;
 
@@ -38,9 +38,9 @@ struct Row {
 
 fn get_all_data() -> Vec<Row> {
 
-    let mut vec = Vec::with_capacity(10_000);
+    let mut vec = Vec::with_capacity(100);
 
-    for i in 0..10_000 {
+    for i in 0..100 {
         vec.push(Row {
             item: format!("Item: {:?}", i),
             sub_item: format!("SubItem {:?}", i),
@@ -112,17 +112,7 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                         return 0;
                     }
                    
-                    if (mask & LVIF_STATE) == 0 { 
-                        // println!("They want state!");
-                        (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.state = 0;
-                    }
-
-                    if (mask & LVIF_IMAGE) == 0 { 
-                        // println!("They want image!");
-                        (*(l_param as LPNMLVDISPINFOW) as NMLVDISPINFOW).item.iImage = -1;
-                    }
-
-                    if (mask & LVIF_TEXT) == 0 {
+                    if (mask & LVIF_TEXT) == LVIF_TEXT {
                         let len = ALL_DATA.read().unwrap().len();
                         if ix >= len -1 {
                             println!("ix bigger then index! ix: {:?} len: {:?}", ix, len );
@@ -137,6 +127,7 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                             (ptr, vec.len())
                         };
 
+   
                         let (ptr, _) = match (*(l_param as *const NMLVDISPINFOW)).item.iSubItem {
                             0 => f(&item.item),
                             1 => f(&item.sub_item),
@@ -146,24 +137,7 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
                             }
                         };
 
-                        
-                        if (*(l_param as *const NMLVDISPINFOW)).item.cchTextMax > 0 {
-                            println!("cchTextMax is {:?}", (*(l_param as *const NMLVDISPINFOW)).item.cchTextMax  );
-                        }
-
-                        // Try to set text in dispinfo
-                         (*(l_param as *mut NMLVDISPINFOW)).item.pszText = ptr as LPWSTR; 
-
-
-                        // Debug code
-                        // let ref vec = STRING_CACHE.read().unwrap()[&item.item];
-
-                        println!("New string len: {:?} vec: {:?} l_param: {:?}",
-                            kernel32::lstrlenW((*(l_param as *const NMLVDISPINFOW)).item.pszText),
-                            ptr,
-                            l_param);
-
-                        return 0;                
+                        (*(l_param as *mut NMLVDISPINFOW)).item.pszText = ptr as LPWSTR; 
                                         
                     }
 
@@ -186,7 +160,6 @@ pub unsafe extern "system" fn window_proc(hwnd: HWND, msg: UINT, w_param: WPARAM
 
         },
         WM_SIZE => {
-            // user32::DefWindowProcW(hwnd, msg, w_param, l_param)
             on_size(hwnd, LOWORD(l_param as u32) as i32, HIWORD(l_param as u32) as i32, w_param as u32);
             0
         },
@@ -334,17 +307,10 @@ fn create_list_view(hwnd_parent: HWND) -> HWND {
     // This should only run once!
     unsafe {
    
-
         // Setup actual listview
-        let mut rc_client: RECT = RECT {
-            right: 0, left: 0, top: 0, bottom: 0
-        };
-        user32::GetClientRect(hwnd_parent, &mut rc_client);
         
         let wc = to_wstring("SysListView32");
         let h_instance = kernel32::GetModuleHandleW(std::ptr::null_mut());
-
-        let style_ex = 0; //winapi::LVS_EX_AUTOSIZECOLUMNS;
 
         let style =  WS_VISIBLE | WS_CHILD | WS_TABSTOP |
                   LVS_NOSORTHEADER | LVS_OWNERDATA | LVS_AUTOARRANGE |
@@ -355,23 +321,14 @@ fn create_list_view(hwnd_parent: HWND) -> HWND {
             to_wstring("").as_ptr() as *mut _, 
             style, 
             0, 0, 0, 0,
-            // rc_client.right - rc_client.left, 
-            // rc_client.bottom - rc_client.top, 
             hwnd_parent, 
             IDC_MAIN_LISTVIEW , 
             h_instance, 
             std::ptr::null_mut());
 
-        println!("{:?} x {:?}", rc_client.right - rc_client.left, rc_client.bottom - rc_client.top);        
-
-        println!("ListView hwnd: {:?}", hwnd);
-        
-
         hwnd
 
     }
-
-    // 0 as HWND
 }
 
 
