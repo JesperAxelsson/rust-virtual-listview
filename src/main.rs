@@ -42,7 +42,6 @@ fn get_all_data() -> Vec<Row> {
 
 fn to_wstring(str: &str) -> Vec<u16> {
     let mut wide: Vec<u16> = OsStr::new(str).encode_wide().chain(once(0)).collect();
-    wide.push(0);
     wide
 }
 
